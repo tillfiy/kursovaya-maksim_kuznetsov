@@ -41,8 +41,10 @@ class TimingMiddleware:
         async def send_with_timing(message):
             if message["type"] == "http.response.start":
                 total_ms = (time.perf_counter() - started) * 1000
-                headers = list(message.get("headers", []))
+                # ДЗ 1: кеширование любого уровня, включая клиентское, не применяется.
+                headers = [(k, v) for k, v in message.get("headers", []) if k not in (b"etag", b"last-modified")]
                 headers += [
+                    (b"cache-control", b"no-store"),
                     (b"x-app-time-ms", f"{total_ms:.2f}".encode()),
                     (b"x-db-time-ms", f"{stats.db_ms:.2f}".encode()),
                     (b"x-db-queries", str(stats.queries).encode()),
