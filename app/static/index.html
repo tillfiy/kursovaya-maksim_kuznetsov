@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Служба поддержки — maksim_kuznetsov</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+  header { background: #2b3a55; color: #fff; padding: 10px 20px; display: flex; gap: 18px; align-items: center; }
+  header a { color: #fff; text-decoration: none; }
+  header .prefix { font-family: monospace; background: #44587d; padding: 2px 8px; border-radius: 4px; }
+  header .spacer { flex: 1; }
+  main { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+  .card { background: #fff; border-radius: 6px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border-bottom: 1px solid #e3e5e8; padding: 6px 8px; text-align: left; }
+  th { background: #f0f2f5; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .new { background: #dbe9ff; } .in_progress { background: #fff1c7; } .closed { background: #dcf3df; }
+  .bad { color: #b3261e; font-weight: 600; } .ok { color: #1e7b34; }
+  form.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  input, select, textarea, button { font: inherit; padding: 5px 8px; }
+  textarea { width: 100%; box-sizing: border-box; }
+  .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  .comment { border-left: 3px solid #ccd; padding: 4px 10px; margin: 8px 0; }
+  .comment.staff { border-color: #2b3a55; }
+  .muted { color: #777; font-size: 13px; }
+  .error { color: #b3261e; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Служба поддержки</strong>
+  <span class="prefix">maksim_kuznetsov</span>
+  <a href="#/tickets">Заявки</a>
+  <a href="#/new">Новая заявка</a>
+  <a href="#/summary">Сводка</a>
+  <span class="spacer"></span>
+  <span id="who"></span>
+  <a href="#" id="logout">Выйти</a>
+</header>
+<main id="app"></main>
+
+<script>
+const STATUS = { new: "новая", in_progress: "в работе", closed: "закрыта" };
+const app = document.getElementById("app");
+let me = null;
+let categories = [];
+
+async function api(method, path, body) {
+  const resp = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "same-origin",
+  });
+  if (resp.status === 401 && path !== "/api/auth/login") { me = null; location.hash = "#/login"; throw new Error("401"); }
+  const data = resp.status === 204 ? null : await resp.json();
+  if (!resp.ok) throw new Error(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+  data && (data.__timing = `${resp.headers.get("x-app-time-ms")} мс, запросов к БД: ${resp.headers.get("x-db-queries")}`);
+  return data;
+}
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dt = s => s ? new Date(s).toLocaleString("ru-RU") : "—";
+const mins = m => m < 60 ? `${m.toFixed(0)} мин` : m < 1440 ? `${(m / 60).toFixed(1)} ч` : `${(m / 1440).toFixed(1)} дн`;
+const badge = s => `<span class="badge ${s}">${STATUS[s]}</span>`;
+const timing = d => `<p class="muted">Ответ сервера: ${d.__timing}</p>`;
+
+async function ensureMe() {
+  if (!me) me = await api("GET", "/api/me");
+  if (!categories.length) categories = await api("GET", "/api/categories");
+  document.getElementById("who").textContent = `${me.full_name} (${me.login}, ${me.role === "staff" ? "сотрудник" : "клиент"})`;
+}
+
+function viewLogin() {
+  app.innerHTML = `<div class="card" style="max-width:360px">
+    <h2>Вход</h2>
+    <form id="f"><p><input name="login" placeholder="логин" value="demo"></p>
+    <p><input name="password" type="password" placeholder="пароль" value="demo"></p>
+    <button>Войти</button> <span class="error" id="err"></span></form>
+    <p class="muted">Учётные записи: demo / demo (сотрудник), client / client (клиент)</p></div>`;
+  document.getElementById("f").onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const r = await api("POST", "/api/auth/login", { login: fd.get("login"), password: fd.get("password") });
+      me = r.user; location.hash = "#/tickets";
+    } catch (err) { document.getElementById("err").textContent = err.message; }
+  };
+}
+
+async function viewTickets(params) {
+  await ensureMe();
+  const p = new URLSearchParams(params);
+  if (!p.get("page")) p.set("page", "1");
+  if (!p.get("size")) p.set("size", "20");
+  for (const [k, v] of [...p]) if (!v) p.delete(k);
+  const data = await api("GET", "/api/tickets?" + p);
+  const pages = Math.max(1, Math.ceil(data.total / data.size));
+  const opt = (v, t, cur) => `<option value="${v}" ${String(cur) === String(v) ? "selected" : ""}>${esc(t)}</option>`;
+  app.innerHTML = `<div class="card"><h2>Заявки</h2>
+    <form class="filters" id="filters">
+      <select name="status">${opt("", "все статусы", p.get("status") || "")}${Object.entries(STATUS).map(([k, v]) => opt(k, v, p.get("status"))).join("")}</select>
+      <select name="category_id">${opt("", "все категории", p.get("category_id") || "")}${categories.map(c => opt(c.id, c.name, p.get("category_id"))).join("")}</select>
+      <input name="q" placeholder="поиск по теме" value="${esc(p.get("q") || "")}">
+      <select name="size">${[10, 20, 50, 100].map(n => opt(n, n + " на стр.", p.get("size"))).join("")}</select>
+      <button>Показать</button>
+    </form>
+    <table><tr><th>№</th><th>Тема</th><th>Категория</th><th>Автор</th><th>Статус</th><th>Создана</th><th>Срок реакции / норматив</th><th>Комм.</th></tr>
+    ${data.items.map(t => `<tr>
+      <td><a href="#/tickets/${t.id}">${t.id}</a></td><td><a href="#/tickets/${t.id}">${esc(t.title)}</a></td>
+      <td>${esc(t.category.name)}</td><td>${esc(t.author.full_name)}</td><td>${badge(t.status)}</td><td>${dt(t.created_at)}</td>
+      <td class="${t.norm_violated ? "bad" : "ok"}">${mins(t.reaction_minutes)} / ${mins(t.norm_minutes)}${t.first_reply_at ? "" : " (нет ответа)"}</td>
+      <td>${t.comments_count}</td></tr>`).join("")}
+    </table>
+    <div class="pager">
+      <button id="prev" ${data.page <= 1 ? "disabled" : ""}>←</button>
+      <span>Страница ${data.page} из ${pages}, всего заявок: ${data.total}</span>
+      <button id="next" ${data.page >= pages ? "disabled" : ""}>→</button>
+    </div>${timing(data)}</div>`;
+  document.getElementById("filters").onsubmit = e => {
+    e.preventDefault();
+    const q = new URLSearchParams(new FormData(e.target)); q.set("page", "1");
+    location.hash = "#/tickets?" + q;
+  };
+  const go = d => { p.set("page", data.page + d); location.hash = "#/tickets?" + p; };
+  document.getElementById("prev").onclick = () => go(-1);
+  document.getElementById("next").onclick = () => go(1);
+}
+
+async function viewTicket(id) {
+  await ensureMe();
+  const t = await api("GET", `/api/tickets/${id}`);
+  const next = { new: ["in_progress", "closed"], in_progress: ["closed"], closed: [] }[t.status];
+  app.innerHTML = `<div class="card">
+    <p><a href="#/tickets">← к списку</a></p>
+    <h2>Заявка №${t.id}: ${esc(t.title)}</h2>
+    <table>
+      <tr><th>Статус</th><td>${badge(t.status)}</td></tr>
+      <tr><th>Категория</th><td>${esc(t.category.name)} (норматив реакции ${mins(t.norm_minutes)})</td></tr>
+      <tr><th>Автор</th><td>${esc(t.author.full_name)}</td></tr>
+      <tr><th>Создана</th><td>${dt(t.created_at)}</td></tr>
+      <tr><th>Первый ответ сотрудника</th><td>${dt(t.first_reply_at)}</td></tr>
+      <tr><th>Срок реакции</th><td class="${t.norm_violated ? "bad" : "ok"}">${mins(t.reaction_minutes)} — ${t.norm_violated ? "норматив нарушен" : "в нормативе"}</td></tr>
+      <tr><th>Закрыта</th><td>${dt(t.closed_at)}</td></tr>
+    </table>
+    <p>${esc(t.body)}</p>
+    ${me.role === "staff" && next.length ? `<p>Перевести в: ${next.map(s => `<button data-s="${s}">${STATUS[s]}</button>`).join(" ")}</p>` : ""}
+    <h3>Переписка (${t.comments.length})</h3>
+    ${t.comments.map(c => `<div class="comment ${c.author_role}"><b>${esc(c.author_name)}</b>
+       <span class="muted">${c.author_role === "staff" ? "сотрудник" : "клиент"}, ${dt(c.created_at)}</span><br>${esc(c.body)}</div>`).join("") || "<p class='muted'>Комментариев нет</p>"}
+    ${t.status !== "closed" ? `<form id="cf"><textarea name="body" rows="3" placeholder="Комментарий"></textarea><button>Отправить</button> <span class="error" id="err"></span></form>` : ""}
+    ${timing(t)}</div>`;
+  document.querySelectorAll("button[data-s]").forEach(b => b.onclick = async () => {
+    await api("PATCH", `/api/tickets/${id}/status`, { status: b.dataset.s }); viewTicket(id);
+  });
+  const cf = document.getElementById("cf");
+  if (cf) cf.onsubmit = async e => {
+    e.preventDefault();
+    try { await api("POST", `/api/tickets/${id}/comments`, { body: new FormData(cf).get("body") }); viewTicket(id); }
+    catch (err) { document.getElementById("err").textContent = err.message; }
+  };
+}
+
+async function viewNew() {
+  await ensureMe();
+  app.innerHTML = `<div class="card"><h2>Новая заявка</h2><form id="nf">
+    <p><input name="title" placeholder="Тема" style="width:100%;box-sizing:border-box"></p>
+    <p><select name="category_id">${categories.map(c => `<option value="${c.id}">${esc(c.name)} (норматив ${mins(c.norm_minutes)})</option>`).join("")}</select></p>
+    <p><textarea name="body" rows="5" placeholder="Описание"></textarea></p>
+    <button>Создать</button> <span class="error" id="err"></span></form></div>`;
+  document.getElementById("nf").onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const t = await api("POST", "/api/tickets", { title: fd.get("title"), body: fd.get("body"), category_id: Number(fd.get("category_id")) });
+      location.hash = `#/tickets/${t.id}`;
+    } catch (err) { document.getElementById("err").textContent = err.message; }
+  };
+}
+
+async function viewSummary() {
+  await ensureMe();
+  const s = await api("GET", "/api/summary");
+  const pct = x => (x * 100).toFixed(1) + " %";
+  app.innerHTML = `<div class="card"><h2>Сводка по всем заявкам</h2>
+    <p>Всего заявок: <b>${s.totals.total}</b>, открытых: <b>${s.totals.open}</b>,
+       из них с нарушенным нормативом реакции: <b>${s.totals.open_violated}</b> (<b>${pct(s.totals.violated_share)}</b>)</p>
+    <table><tr><th>Категория</th><th>Норматив</th><th>Всего заявок</th><th>Открытых</th><th>Нарушен норматив</th><th>Доля нарушений</th></tr>
+    ${s.categories.map(c => `<tr><td>${esc(c.name)}</td><td>${mins(c.norm_minutes)}</td><td>${c.total}</td><td>${c.open}</td>
+      <td>${c.open_violated}</td><td class="${c.violated_share > 0.5 ? "bad" : ""}">${pct(c.violated_share)}</td></tr>`).join("")}
+    </table>${timing(s)}</div>`;
+}
+
+async function route() {
+  const [path, query] = (location.hash.slice(1) || "/tickets").split("?");
+  try {
+    if (path === "/login") return viewLogin();
+    if (path === "/new") return await viewNew();
+    if (path === "/summary") return await viewSummary();
+    const m = path.match(/^\/tickets\/(\d+)$/);
+    if (m) return await viewTicket(m[1]);
+    return await viewTickets(query || "");
+  } catch (err) {
+    if (err.message !== "401") app.innerHTML = `<div class="card error">${esc(err.message)}</div>`;
+  }
+}
+
+document.getElementById("logout").onclick = async e => {
+  e.preventDefault(); await api("POST", "/api/auth/logout"); me = null; location.hash = "#/login";
+};
+window.addEventListener("hashchange", route);
+route();
+</script>
+</body>
+</html>
