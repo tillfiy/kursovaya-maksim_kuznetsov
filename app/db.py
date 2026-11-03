@@ -46,7 +46,8 @@ def open_pool(schema: str = config.DB_SCHEMA) -> ConnectionPool:
     _pool = ConnectionPool(
         config.DATABASE_URL,
         min_size=2,
-        max_size=10,
+        max_size=config.DB_POOL_MAX,
+        timeout=config.DB_POOL_TIMEOUT,
         kwargs={
             "cursor_factory": TimedCursor,
             "row_factory": dict_row,
