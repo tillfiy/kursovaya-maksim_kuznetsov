@@ -1,3 +1,4 @@
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field
 
-from app import auth, db, repo, rules
+from app import auth, config, db, repo, rules
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -59,7 +60,56 @@ class TimingMiddleware:
             db.current_stats.reset(token)
 
 
+class DbGate:
+    """Не больше DB_POOL_MAX запросов к API одновременно — по числу соединений в пуле.
+
+    Каждый запрос к API берёт одно соединение (зависимость get_conn), а обработчики
+    синхронные и выполняются в пуле потоков. Без ограничения под нагрузкой все потоки
+    занимали запросы, ждущие соединение, а запросы, уже получившие соединение, не могли
+    получить поток для обработчика: взаимная блокировка до истечения DB_POOL_TIMEOUT
+    (найдена испытанием ДЗ 2). Здесь лишние запросы ждут в цикле событий, не занимая потоков.
+    """
+
+    def __init__(self, limit):
+        self.limit = limit
+        self._sem = None
+
+    async def acquire(self, timeout):
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self.limit)
+        try:
+            await asyncio.wait_for(self._sem.acquire(), timeout)
+            return True
+        except TimeoutError:
+            return False
+
+    def release(self):
+        self._sem.release()
+
+
+class DbGateMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        if not await db_gate.acquire(config.DB_POOL_TIMEOUT):
+            await OVERLOADED(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            db_gate.release()
+
+
+OVERLOADED = JSONResponse(status_code=503, headers={"Retry-After": "1"},
+                          content={"detail": "Сервис перегружен, повторите запрос позже"})
+db_gate = DbGate(config.DB_POOL_MAX)
+
 app = FastAPI(title="Служба поддержки — maksim_kuznetsov", lifespan=lifespan)
+app.add_middleware(DbGateMiddleware)
 app.add_middleware(TimingMiddleware)
 
 

@@ -1,0 +1,44 @@
+[
+ {
+  "rate": 2,
+  "start": 6.0,
+  "end": 36.6,
+  "passed": true,
+  "file": "results/load/deadlock_mixed_2.json"
+ },
+ {
+  "rate": 4,
+  "start": 39.6,
+  "end": 70.2,
+  "passed": true,
+  "file": "results/load/deadlock_mixed_4.json"
+ },
+ {
+  "rate": 8,
+  "start": 73.2,
+  "end": 106.3,
+  "passed": true,
+  "file": "results/load/deadlock_mixed_8.json"
+ },
+ {
+  "rate": 16,
+  "start": 109.4,
+  "end": 140.0,
+  "passed": true,
+  "file": "results/load/deadlock_mixed_16.json"
+ },
+ {
+  "rate": 32,
+  "start": 144.0,
+  "end": 192.8,
+  "passed": false,
+  "file": "results/load/deadlock_mixed_32.json"
+ },
+ {
+  "rate": 64,
+  "start": 196.8,
+  "end": 257.6,
+  "passed": false,
+  "file": "results/load/deadlock_mixed_64.json"
+ }
+]

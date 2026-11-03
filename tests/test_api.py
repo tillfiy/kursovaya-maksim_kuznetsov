@@ -121,3 +121,15 @@ def test_overload_returns_503_instead_of_500(staff):
         app.dependency_overrides.clear()
     assert r.status_code == 503
     assert r.headers["retry-after"] == "1"
+
+
+def test_overload_at_gate_returns_503(staff, monkeypatch):
+    from app import main
+
+    async def closed(_timeout):
+        return False
+
+    monkeypatch.setattr(main.db_gate, "acquire", closed)
+    r = staff.get("/api/tickets")
+    assert r.status_code == 503
+    assert r.headers["retry-after"] == "1"
