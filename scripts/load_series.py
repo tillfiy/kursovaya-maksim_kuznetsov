@@ -42,7 +42,7 @@ DB_CONTAINER = "maksim_kuznetsov_db"
 def find_app_process():
     for p in psutil.process_iter(["pid", "cmdline"]):
         cmd = " ".join(p.info["cmdline"] or [])
-        if "app.main:app" in cmd and "py-spy" not in cmd:
+        if ("app.main:app" in cmd or "scripts.profile_server" in cmd) and "py-spy" not in cmd:
             return p
     raise SystemExit("Не найден процесс сервиса (uvicorn app.main:app) — запустите его")
 

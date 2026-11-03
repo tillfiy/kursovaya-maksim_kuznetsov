@@ -1,0 +1,9 @@
+[
+ {
+  "rate": 64,
+  "start": 6.0,
+  "end": 66.7,
+  "passed": false,
+  "file": "results/load/before_overload_64.json"
+ }
+]

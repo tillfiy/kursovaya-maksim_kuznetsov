@@ -102,3 +102,22 @@ def test_ticket_card_reaction_matches_first_staff_comment(staff):
     body = staff.get("/api/tickets/147").json()
     staff_comments = [c["created_at"] for c in body["comments"] if c["author_role"] == "staff"]
     assert body["first_reply_at"] == (staff_comments[0] if staff_comments else None)
+
+
+def test_overload_returns_503_instead_of_500(staff):
+    from psycopg_pool import PoolTimeout
+
+    from app import db
+    from app.main import app
+
+    def no_connection():
+        raise PoolTimeout("couldn't get a connection")
+        yield
+
+    app.dependency_overrides[db.get_conn] = no_connection
+    try:
+        r = staff.get("/api/tickets")
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 503
+    assert r.headers["retry-after"] == "1"

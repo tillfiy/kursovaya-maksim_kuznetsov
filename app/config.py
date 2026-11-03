@@ -12,5 +12,7 @@ DB_SCHEMA = os.getenv("DB_SCHEMA", "maksim_kuznetsov")
 SECRET_KEY = os.getenv("SECRET_KEY", "changeme")
 APP_PORT = int(os.getenv("APP_PORT", "8080"))
 DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
-DB_POOL_TIMEOUT = float(os.getenv("DB_POOL_TIMEOUT", "30"))
+# Сколько ждать свободного соединения из пула. Под перегрузкой запрос, не получивший
+# соединения за это время, получает 503 вместо ожидания (см. обработчик в app/main.py).
+DB_POOL_TIMEOUT = float(os.getenv("DB_POOL_TIMEOUT", "5"))
 TOKEN_TTL_SECONDS = 12 * 3600

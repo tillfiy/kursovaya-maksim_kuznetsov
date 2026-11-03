@@ -1,0 +1,37 @@
+[
+ {
+  "rate": 2,
+  "start": 6.0,
+  "end": 36.9,
+  "passed": true,
+  "file": "results/load/before_mixed_2.json"
+ },
+ {
+  "rate": 4,
+  "start": 40.9,
+  "end": 71.3,
+  "passed": true,
+  "file": "results/load/before_mixed_4.json"
+ },
+ {
+  "rate": 8,
+  "start": 75.3,
+  "end": 105.9,
+  "passed": true,
+  "file": "results/load/before_mixed_8.json"
+ },
+ {
+  "rate": 16,
+  "start": 108.9,
+  "end": 139.4,
+  "passed": true,
+  "file": "results/load/before_mixed_16.json"
+ },
+ {
+  "rate": 32,
+  "start": 143.4,
+  "end": 175.2,
+  "passed": false,
+  "file": "results/load/before_mixed_32.json"
+ }
+]

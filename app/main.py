@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, Field
 
 from app import auth, db, repo, rules
@@ -60,6 +61,14 @@ class TimingMiddleware:
 
 app = FastAPI(title="Служба поддержки — maksim_kuznetsov", lifespan=lifespan)
 app.add_middleware(TimingMiddleware)
+
+
+@app.exception_handler(PoolTimeout)
+def pool_timeout(_request, _exc):
+    # Все соединения с базой заняты дольше DB_POOL_TIMEOUT: сервис перегружен.
+    # Явный 503 с Retry-After вместо необработанной ошибки 500.
+    return JSONResponse(status_code=503, headers={"Retry-After": "1"},
+                        content={"detail": "Сервис перегружен, повторите запрос позже"})
 
 
 def now() -> datetime:
