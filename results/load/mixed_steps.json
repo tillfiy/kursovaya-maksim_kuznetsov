@@ -1,0 +1,44 @@
+[
+ {
+  "rate": 2,
+  "start": 6.0,
+  "end": 36.8,
+  "passed": true,
+  "file": "results/load/mixed_2.json"
+ },
+ {
+  "rate": 4,
+  "start": 41.8,
+  "end": 72.4,
+  "passed": true,
+  "file": "results/load/mixed_4.json"
+ },
+ {
+  "rate": 8,
+  "start": 76.4,
+  "end": 107.0,
+  "passed": true,
+  "file": "results/load/mixed_8.json"
+ },
+ {
+  "rate": 16,
+  "start": 110.0,
+  "end": 140.7,
+  "passed": true,
+  "file": "results/load/mixed_16.json"
+ },
+ {
+  "rate": 32,
+  "start": 143.7,
+  "end": 175.5,
+  "passed": false,
+  "file": "results/load/mixed_32.json"
+ },
+ {
+  "rate": 64,
+  "start": 179.5,
+  "end": 220.3,
+  "passed": false,
+  "file": "results/load/mixed_64.json"
+ }
+]

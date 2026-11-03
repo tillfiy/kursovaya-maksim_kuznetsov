@@ -1,0 +1,44 @@
+[
+ {
+  "rate": 1,
+  "start": 6.0,
+  "end": 36.9,
+  "passed": true,
+  "file": "results/load/heavy_1.json"
+ },
+ {
+  "rate": 2,
+  "start": 40.9,
+  "end": 71.6,
+  "passed": true,
+  "file": "results/load/heavy_2.json"
+ },
+ {
+  "rate": 4,
+  "start": 74.6,
+  "end": 105.8,
+  "passed": true,
+  "file": "results/load/heavy_4.json"
+ },
+ {
+  "rate": 8,
+  "start": 108.8,
+  "end": 139.5,
+  "passed": true,
+  "file": "results/load/heavy_8.json"
+ },
+ {
+  "rate": 16,
+  "start": 143.5,
+  "end": 182.0,
+  "passed": false,
+  "file": "results/load/heavy_16.json"
+ },
+ {
+  "rate": 32,
+  "start": 185.0,
+  "end": 226.5,
+  "passed": false,
+  "file": "results/load/heavy_32.json"
+ }
+]

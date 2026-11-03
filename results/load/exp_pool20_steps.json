@@ -1,0 +1,9 @@
+[
+ {
+  "rate": 32,
+  "start": 6.0,
+  "end": 37.3,
+  "passed": false,
+  "file": "results/load/exp_pool20_32.json"
+ }
+]
