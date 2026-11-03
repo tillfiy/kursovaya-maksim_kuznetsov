@@ -83,6 +83,9 @@ def main():
     def draw(node, x, depth):
         for name, kid in sorted(node["kids"].items(), key=lambda kv: -kv[1]["n"]):
             w = kid["n"] / total_work
+            if w < 0.01:  # узкие ветви (< 1 % снимков) не рисуются, чтобы не сжимать график
+                x += w
+                continue
             color = "#5b8ff9" if is_own(name) else colors[hash(name) % len(colors)]
             ax.add_patch(Rectangle((x, depth), w, 0.95, facecolor=color, edgecolor="white", linewidth=0.5))
             if w > 0.06:
