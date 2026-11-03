@@ -8,8 +8,8 @@
 идут, пока порог не нарушен, и ещё --after-fail ступеней после первого нарушения.
 
 Всё время испытания раз в секунду записываются:
-  - загрузка процессора (% от одного ядра) и память процесса приложения (uvicorn);
-  - загрузка процессора и память контейнера базы данных (docker stats);
+  - загрузка процессора (% от одного ядра) и память контейнеров приложения и базы
+    данных (docker stats, как в лабораторной работе 3);
   - число соединений с базой — всех и выполняющих запрос, а также параллельных
     процессов Postgres, помогающих этим запросам (pg_stat_activity).
 
@@ -29,7 +29,6 @@ import threading
 import time
 from pathlib import Path
 
-import psutil
 import psycopg
 
 from app import config
@@ -37,24 +36,24 @@ from app import config
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "results" / "load"
 DB_CONTAINER = "maksim_kuznetsov_db"
+APP_CONTAINER = "maksim_kuznetsov_api"
 
 
-def find_app_process():
-    for p in psutil.process_iter(["pid", "cmdline"]):
-        cmd = " ".join(p.info["cmdline"] or [])
-        if ("app.main:app" in cmd or "scripts.profile_server" in cmd) and "py-spy" not in cmd:
-            return p
-    raise SystemExit("Не найден процесс сервиса (uvicorn app.main:app) — запустите его")
+def check_app_container():
+    out = subprocess.run(["docker", "ps", "--filter", f"name=^{APP_CONTAINER}$", "--format", "{{.Names}}"],
+                         capture_output=True, text=True).stdout.strip()
+    if out != APP_CONTAINER:
+        raise SystemExit(f"Контейнер {APP_CONTAINER} не запущен: docker compose up -d --build api")
 
 
 class DockerStats(threading.Thread):
-    """Читает поток `docker stats` контейнера базы и хранит последнее значение."""
+    """Читает поток `docker stats` одного контейнера и хранит последнее значение."""
 
-    def __init__(self):
+    def __init__(self, container):
         super().__init__(daemon=True)
         self.cpu, self.mem_mb = 0.0, 0.0
         self.proc = subprocess.Popen(
-            ["docker", "stats", "--format", "{{.CPUPerc}};{{.MemUsage}}", DB_CONTAINER],
+            ["docker", "stats", "--format", "{{.CPUPerc}};{{.MemUsage}}", container],
             stdout=subprocess.PIPE, text=True)
 
     def run(self):
@@ -72,44 +71,37 @@ class DockerStats(threading.Thread):
 
 
 class Monitor(threading.Thread):
-    def __init__(self, app, path):
+    def __init__(self, path):
         super().__init__(daemon=True)
-        self.app, self.path = app, path
+        self.path = path
         self.stop_event = threading.Event()
-        self.app_cpu = 0.0
-        self.docker = DockerStats()
+        self.app = DockerStats(APP_CONTAINER)
+        self.docker = DockerStats(DB_CONTAINER)
 
-    def app_tree(self):
-        procs = [self.app]
-        try:
-            procs += self.app.children(recursive=True)
-        except psutil.Error:
-            pass
-        return procs
+    @property
+    def app_cpu(self):
+        return self.app.cpu
 
     def run(self):
+        self.app.start()
         self.docker.start()
         conn = psycopg.connect(config.DATABASE_URL, autocommit=True)
-        for p in self.app_tree():
-            p.cpu_percent(None)
         with open(self.path, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["t", "app_cpu", "app_mem_mb", "db_cpu", "db_mem_mb", "db_conn_total", "db_conn_active", "db_parallel_workers"])
+            w.writerow(["t", "app_cpu", "app_mem_mb", "db_cpu", "db_mem_mb", "db_conn_total", "db_conn_active",
+                        "db_parallel_workers"])
             start = time.time()
             while not self.stop_event.wait(1.0):
-                procs = self.app_tree()
-                cpu = sum(p.cpu_percent(None) for p in procs if p.is_running())
-                mem = sum(p.memory_info().rss for p in procs if p.is_running()) / 2**20
-                self.app_cpu = cpu
                 row = conn.execute(
                     "SELECT count(*) FILTER (WHERE backend_type = 'client backend'), "
                     "count(*) FILTER (WHERE backend_type = 'client backend' AND state = 'active'), "
                     "count(*) FILTER (WHERE backend_type = 'parallel worker') "
                     "FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()").fetchone()
-                w.writerow([f"{time.time() - start:.1f}", f"{cpu:.1f}", f"{mem:.1f}",
+                w.writerow([f"{time.time() - start:.1f}", f"{self.app.cpu:.1f}", f"{self.app.mem_mb:.1f}",
                             f"{self.docker.cpu:.1f}", f"{self.docker.mem_mb:.1f}", row[0], row[1], row[2]])
                 f.flush()
         conn.close()
+        self.app.stop()
         self.docker.stop()
 
 
@@ -145,13 +137,13 @@ def main():
 
     label = args.label or args.scenario
     OUT.mkdir(parents=True, exist_ok=True)
-    app = find_app_process()
-    monitor = Monitor(app, OUT / f"{label}_resources.csv")
+    check_app_container()
+    monitor = Monitor(OUT / f"{label}_resources.csv")
     monitor.start()
     time.sleep(3)
     t0 = time.time() - 3
     steps, fails_left = [], None
-    print(f"Серия «{label}»: процесс сервиса PID {app.pid}, ступени {args.rates} по {args.duration}\n")
+    print(f"Серия «{label}»: контейнер {APP_CONTAINER}, ступени {args.rates} по {args.duration}\n")
     for rate in [int(r) for r in args.rates.split(",")]:
         wait_idle(monitor)
         out = f"results/load/{label}_{rate}.json"

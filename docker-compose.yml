@@ -14,5 +14,26 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # Сервис в контейнере (ДЗ 2): нагрузочные испытания и профиль py-spy.
+  # Запуск: docker compose up -d --build api
+  api:
+    build: .
+    image: maksim_kuznetsov_api
+    container_name: maksim_kuznetsov_api
+    environment:
+      DATABASE_URL: postgresql://maksim_kuznetsov:changeme@db:5432/maksim_kuznetsov
+      DB_SCHEMA: maksim_kuznetsov
+      SECRET_KEY: changeme
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-5}
+    ports:
+      - "8080:8080"
+    # право подключаться к процессу нужно py-spy (как в стенде лабораторной работы 4)
+    cap_add:
+      - SYS_PTRACE
+    depends_on:
+      - db
+    profiles: ["api"]
+
 volumes:
   pgdata:

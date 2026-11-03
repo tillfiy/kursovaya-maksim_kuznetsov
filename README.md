@@ -89,28 +89,34 @@
     curl -LO https://github.com/grafana/k6/releases/download/v2.3.0/k6-v2.3.0-macos-arm64.zip
     unzip k6-v2.3.0-macos-arm64.zip && sudo mv k6-v2.3.0-macos-arm64/k6 /usr/local/bin/
 
-Одна ступень вручную (сервис запущен, база наполнена рабочим объёмом):
+Для испытаний сервис запускается в контейнере рядом с базой (как стенд лабораторных работ 3–4):
+образ собирается из Dockerfile, в нём есть py-spy, контейнеру выдано право SYS_PTRACE.
+
+    docker compose up -d --build api
+
+Одна ступень вручную (база наполнена рабочим объёмом):
 
     k6 run -e SCENARIO=mixed -e RATE=8 -e DURATION=30s load/test.js
 
-Серия ступеней с записью ресурсов (процессор и память приложения и БД, соединения с БД) и отчёт по ней:
+Серия ступеней с записью ресурсов (процессор и память контейнеров приложения и базы — docker stats,
+соединения с БД — pg_stat_activity) и отчёт по ней:
 
     python -m scripts.seed --size work
-    python -m scripts.load_series --scenario mixed --rates 2,4,8,16,32
+    python -m scripts.load_series --scenario mixed --rates 2,4,8,16,32,64
     python -m scripts.load_report mixed
 
 Перед каждой серией база наполняется заново: операции записи добавляют данные.
-Профиль приложения под нагрузкой снимается встроенным выборочным профилировщиком: сервис
-запускается через `scripts/profile_server.py`, который через `--delay` секунд 100 раз в секунду
-снимает стеки всех потоков в течение `--duration` секунд (py-spy на этом стенде к процессу Python
-с python.org не подключается даже под sudo). Разбор — таблица функций и флеймграф:
 
-    python -m scripts.profile_server --delay 15 --duration 20
-    k6 run -e SCENARIO=heavy -e RATE=10 -e DURATION=45s load/test.js
+Профиль под нагрузкой — py-spy внутри контейнера (процесс сервиса — PID 1):
+
+    docker compose exec api py-spy dump --pid 1
+    docker compose exec api py-spy record --pid 1 --duration 20 --idle --function --output /tmp/profile.svg
+    docker compose exec api py-spy record --pid 1 --duration 20 --idle --function --format raw --output /tmp/profile.txt
+    docker compose cp api:/tmp/profile.txt results/load/profile_heavy.txt
     python -m scripts.profile_report heavy
 
 Размер пула соединений и время ожидания соединения задаются переменными `DB_POOL_MAX` (10) и
-`DB_POOL_TIMEOUT` (секунды).
+`DB_POOL_TIMEOUT` (секунды), для контейнера — так: `DB_POOL_MAX=20 docker compose up -d api`.
 
 ## Программный интерфейс
 

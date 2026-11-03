@@ -1,5 +1,8 @@
-"""Разбор профиля, снятого scripts/profile_server.py: таблица функций и флеймграф.
+"""Разбор профиля py-spy в формате raw: таблица функций и флеймграф.
 
+    docker compose exec api py-spy record --pid 1 --duration 20 --idle --function \\
+        --format raw --output /tmp/profile.txt
+    docker compose cp api:/tmp/profile.txt results/load/profile_heavy.txt
     python -m scripts.profile_report heavy
 
 Доли считаются от снимков потоков, занятых обработкой запроса (в стеке есть
@@ -43,8 +46,7 @@ def main():
     work = [(s, n) for s, n in stacks if any(is_own(f) for f in s)]
     total_work = sum(n for _, n in work)
     total_all = sum(n for _, n in stacks)
-    print(f"Профиль «{label}»: {meta.get('snapshots')} снимков за {meta.get('duration')} с "
-          f"({meta.get('rate')} раз/с); снимков потоков всего {total_all}, "
+    print(f"Профиль «{label}» (py-spy, raw): снимков потоков всего {total_all}, "
           f"из них за обработкой запроса {total_work}\n")
 
     inclusive = collections.Counter()
